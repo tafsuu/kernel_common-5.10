@@ -77,6 +77,15 @@ static unsigned int iyashi_floor_pct          __read_mostly = 90;
 static unsigned int iyashi_near_limit_offset_c __read_mostly = 5;
 
 /*
+ * External suppression flag driven by thermal_charger_guard.c.  The
+ * effective active state is (iyashi_enabled && !iyashi_charger_suppressed);
+ * iyashi_recompute_active() flips the static branch to mirror it.  The
+ * user-visible `enabled` sysfs node is left untouched by the charger
+ * guard -- the suppression flag is exposed read-only as a sibling.
+ */
+static unsigned int iyashi_charger_suppressed __read_mostly;
+
+/*
  * Optional frequency-units floor (only meaningful for cpufreq cooling).
  * 0 = off; the floor is taken from iyashi_floor_pct in cooling-state
  * units.  Non-zero = compute the deepest cooling state whose target
@@ -108,6 +117,24 @@ static unsigned int iyashi_hikari_boost_pct   __read_mostly = 5;
  * fast path is a single unlikely-branch.
  */
 static DEFINE_STATIC_KEY_FALSE(iyashi_active_key);
+
+/*
+ * Recompute the static-branch state from the AND of (iyashi_enabled,
+ * !iyashi_charger_suppressed).  Both writers (enabled_store and
+ * iyashi_set_charger_suppressed) call this after their own WRITE_ONCE
+ * so the fast path's single static-branch read is always consistent
+ * with the most recent userspace + charger state.
+ */
+static void iyashi_recompute_active(void)
+{
+	bool active = READ_ONCE(iyashi_enabled) &&
+		      !READ_ONCE(iyashi_charger_suppressed);
+
+	if (active)
+		static_branch_enable(&iyashi_active_key);
+	else
+		static_branch_disable(&iyashi_active_key);
+}
 
 /* --------------------------------------------------------------- *
  * Observability latches (R/O from sysfs)                          *
@@ -664,16 +691,34 @@ static ssize_t enabled_store(struct kobject *kobj,
 		return count;
 
 	WRITE_ONCE(iyashi_enabled, val);
-	if (val)
-		static_branch_enable(&iyashi_active_key);
-	else
-		static_branch_disable(&iyashi_active_key);
+	iyashi_recompute_active();
 
 	return count;
 }
 
 static struct kobj_attribute iyashi_enabled_attr =
 	__ATTR(enabled, 0644, enabled_show, enabled_store);
+
+void iyashi_set_charger_suppressed(bool suppressed)
+{
+	unsigned int val = suppressed ? 1 : 0;
+
+	if (val == READ_ONCE(iyashi_charger_suppressed))
+		return;
+
+	WRITE_ONCE(iyashi_charger_suppressed, val);
+	iyashi_recompute_active();
+}
+
+static ssize_t charger_suppressed_show(struct kobject *kobj,
+				       struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n",
+			  READ_ONCE(iyashi_charger_suppressed));
+}
+
+static struct kobj_attribute iyashi_charger_suppressed_attr =
+	__ATTR(charger_suppressed, 0444, charger_suppressed_show, NULL);
 
 IYASHI_ATTR_RW(floor_pct,           iyashi_floor_pct,           val >= 50 && val <= 100);
 IYASHI_ATTR_RW(near_limit_offset_c, iyashi_near_limit_offset_c, val >= 1  && val <= 15);
@@ -901,6 +946,7 @@ static struct kobj_attribute iyashi_version_attr =
 static struct attribute *iyashi_attrs[] = {
 	&iyashi_version_attr.attr,
 	&iyashi_enabled_attr.attr,
+	&iyashi_charger_suppressed_attr.attr,
 	&iyashi_floor_pct_attr.attr,
 	&iyashi_min_freq_pct_attr.attr,
 	&iyashi_enforce_min_attr.attr,
@@ -999,7 +1045,7 @@ static int __init iyashi_init(void)
 	}
 
 	if (READ_ONCE(iyashi_enabled))
-		static_branch_enable(&iyashi_active_key);
+		iyashi_recompute_active();
 
 	/*
 	 * Register a cpufreq policy notifier so the enforce_min path can

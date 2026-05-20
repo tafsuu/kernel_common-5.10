@@ -39,6 +39,16 @@ static unsigned int kasumi_ramp_mc    __read_mostly = 85000;  /* 85 C  */
 static unsigned int kasumi_ceiling_mc __read_mostly = 95000;  /* 95 C  */
 
 /*
+ * External suppression flag driven by thermal_charger_guard.c.  Layered
+ * orthogonally to kasumi_enable: the fast path treats
+ * (kasumi_enable && !kasumi_charger_suppressed) as the effective active
+ * state, so userspace's `enabled` knob keeps its declared meaning and
+ * is never mutated by the charger guard.  Exposed read-only at
+ * /sys/kernel/kasumi/charger_suppressed for observability.
+ */
+static unsigned int kasumi_charger_suppressed __read_mostly;
+
+/*
  * Shape of the offset taper inside the [ramp_mc, ceiling_mc) window.
  *
  *   KASUMI_RAMP_LINEAR    (0, default)
@@ -260,7 +270,9 @@ int kasumi_dampen(int real, const char *zone_type)
 	unsigned int per_zone;
 	int dampened;
 
-	if (!READ_ONCE(kasumi_enable) || real <= 0)
+	if (!READ_ONCE(kasumi_enable) ||
+	    READ_ONCE(kasumi_charger_suppressed) ||
+	    real <= 0)
 		return real;
 
 	offset  = READ_ONCE(kasumi_offset_mc);
@@ -557,6 +569,7 @@ static struct kobj_attribute kasumi_##_name##_attr =			\
 	__ATTR(_name, 0444, _name##_show, NULL)
 
 KASUMI_ATTR_RW(enabled,    kasumi_enable);
+KASUMI_ATTR_RO(charger_suppressed, kasumi_charger_suppressed);
 KASUMI_ATTR_RW(offset_mc,  kasumi_offset_mc);
 KASUMI_ATTR_RW(ramp_mc,    kasumi_ramp_mc);
 KASUMI_ATTR_RW(ceiling_mc, kasumi_ceiling_mc);
@@ -769,6 +782,7 @@ static struct kobj_attribute kasumi_ramp_shape_attr =
 
 static struct attribute *kasumi_attrs[] = {
 	&kasumi_enabled_attr.attr,
+	&kasumi_charger_suppressed_attr.attr,
 	&kasumi_offset_mc_attr.attr,
 	&kasumi_ramp_mc_attr.attr,
 	&kasumi_ceiling_mc_attr.attr,
@@ -812,6 +826,7 @@ static int __init kasumi_safety_self_test(void)
 	unsigned int offset  = READ_ONCE(kasumi_offset_mc);
 	unsigned int ramp    = READ_ONCE(kasumi_ramp_mc);
 	unsigned int saved_enable;
+	unsigned int saved_suppressed;
 	int at_ceiling = (int)ceiling;
 	int above_ceiling = (int)ceiling + 1000;
 	int below_ramp = (int)ramp - 5000;
@@ -819,11 +834,15 @@ static int __init kasumi_safety_self_test(void)
 	int ret = 0;
 
 	/*
-	 * Force kasumi_enable=1 for the duration of the test so the
-	 * result is independent of the default we ship.  Restore on exit.
+	 * Force kasumi_enable=1 and kasumi_charger_suppressed=0 for the
+	 * duration of the test so the result is independent of the default
+	 * we ship and of any charger that may have plugged in during the
+	 * boot window.  Restore both on exit.
 	 */
 	saved_enable = READ_ONCE(kasumi_enable);
+	saved_suppressed = READ_ONCE(kasumi_charger_suppressed);
 	WRITE_ONCE(kasumi_enable, 1);
+	WRITE_ONCE(kasumi_charger_suppressed, 0);
 
 	/* 1. at-or-above-ceiling: must be returned unchanged. */
 	r1 = kasumi_dampen(at_ceiling, NULL);
@@ -858,7 +877,13 @@ static int __init kasumi_safety_self_test(void)
 		ceiling, offset, ramp);
 out:
 	WRITE_ONCE(kasumi_enable, saved_enable);
+	WRITE_ONCE(kasumi_charger_suppressed, saved_suppressed);
 	return ret;
+}
+
+void kasumi_set_charger_suppressed(bool suppressed)
+{
+	WRITE_ONCE(kasumi_charger_suppressed, suppressed ? 1 : 0);
 }
 
 static int __init kasumi_sysfs_init(void)

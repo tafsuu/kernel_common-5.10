@@ -21,6 +21,13 @@
 unsigned long iyashi_clamp_target(struct thermal_cooling_device *cdev,
 				  unsigned long target);
 void iyashi_apply_profile(unsigned int profile);
+/*
+ * Called from thermal_charger_guard.c to layer an external
+ * suppression flag on top of the user's /sys/kernel/iyashi/enabled
+ * knob.  Effective active state is (enabled && !charger_suppressed);
+ * this does not modify the user-visible `enabled` value.
+ */
+void iyashi_set_charger_suppressed(bool suppressed);
 #else
 static inline unsigned long
 iyashi_clamp_target(struct thermal_cooling_device *cdev,
@@ -29,6 +36,7 @@ iyashi_clamp_target(struct thermal_cooling_device *cdev,
 	return target;
 }
 static inline void iyashi_apply_profile(unsigned int profile) { }
+static inline void iyashi_set_charger_suppressed(bool suppressed) { }
 #endif
 
 #endif /* __IYASHI_H__ */

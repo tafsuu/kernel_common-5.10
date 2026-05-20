@@ -18,6 +18,14 @@ bool kasumi_zone_allowed(const char *zone_type);
 int kasumi_dampen(int real, const char *zone_type);
 int kasumi_get_last_real_mc(void);
 void kasumi_apply_profile(unsigned int profile);
+/*
+ * Called from thermal_charger_guard.c to layer an external
+ * suppression flag on top of the user's /sys/kernel/kasumi/enabled
+ * knob.  The fast path treats (enabled && !charger_suppressed) as the
+ * effective active state; this does not modify the user-visible
+ * `enabled` value.
+ */
+void kasumi_set_charger_suppressed(bool suppressed);
 #else
 static inline bool kasumi_zone_allowed(const char *zone_type)
 {
@@ -32,6 +40,9 @@ static inline int kasumi_get_last_real_mc(void)
 	return 0;
 }
 static inline void kasumi_apply_profile(unsigned int profile)
+{
+}
+static inline void kasumi_set_charger_suppressed(bool suppressed)
 {
 }
 #endif
