@@ -532,10 +532,12 @@ void kasumi_apply_profile(unsigned int profile)
 		trace_kasumi_profile(profile, v->offset_mc, v->ramp_mc,
 				     v->ramp_shape, v->warmup_secs);
 
+#ifdef CONFIG_KASUMI_DEBUG_MSG
 	pr_info_ratelimited("kasumi: profile %u applied (offset=%u ramp=%u ceiling=%u shape=%u warmup=%us hot_thresh=%u)\n",
 			    profile, v->offset_mc, v->ramp_mc, v->ceiling_mc,
 			    v->ramp_shape, v->warmup_secs,
 			    v->hot_threshold_mc);
+#endif /* CONFIG_KASUMI_DEBUG_MSG */
 }
 
 /* ---- Kasumi sysfs interface (/sys/kernel/kasumi/) ---- */
@@ -873,8 +875,10 @@ static int __init kasumi_safety_self_test(void)
 		goto out;
 	}
 
+#ifdef CONFIG_KASUMI_DEBUG_MSG
 	pr_info("kasumi: safety self-test passed (ceiling=%u offset=%u ramp=%u)\n",
 		ceiling, offset, ramp);
+#endif /* CONFIG_KASUMI_DEBUG_MSG */
 out:
 	WRITE_ONCE(kasumi_enable, saved_enable);
 	WRITE_ONCE(kasumi_charger_suppressed, saved_suppressed);
@@ -906,6 +910,7 @@ static int __init kasumi_sysfs_init(void)
 		return ret;
 	}
 
+#ifdef CONFIG_KASUMI_DEBUG_MSG
 	/*
 	 * Kasumi boot banner.  Full mythic + mechanism narrative
 	 * emitted once at init.  Single 'Kasumi : ' prefix on every
@@ -1016,6 +1021,7 @@ static int __init kasumi_sysfs_init(void)
 	pr_info("Kasumi :          the river is still there, just below the surface.\n");
 	pr_info("Kasumi : \n");
 	pr_info("Kasumi : built by XTENSEI.\n");
+#endif /* CONFIG_KASUMI_DEBUG_MSG */
 
 	return 0;
 }

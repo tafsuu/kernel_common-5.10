@@ -894,6 +894,18 @@ config HIKARI_DEBUG
 
 	  If unsure, say N.
 
+config HIKARI_DEBUG_MSG
+	bool "Hikari verbose boot and profile messages"
+	depends on HIKARI
+	default y
+	help
+	  When enabled, Hikari prints an ASCII-art banner, profile
+	  application messages, and other verbose boot-time diagnostics
+	  via pr_info.  Disable to strip those strings from the kernel
+	  image, saving ~2 KB of .init.rodata.
+
+	  If unsure, say Y.
+
 config HIKARI_PLACEMENT
 	bool "Hikari big.LITTLE placement steering"
 	depends on HIKARI

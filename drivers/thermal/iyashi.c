@@ -457,9 +457,11 @@ void iyashi_apply_profile(unsigned int profile)
 				     v->near_limit_offset_c,
 				     v->hikari_aware);
 
+#ifdef CONFIG_IYASHI_DEBUG_MSG
 	pr_info_ratelimited("iyashi: profile %u applied (floor=%u%% near_limit=%uC min_freq=%u%% hikari_aware=%u)\n",
 			    profile, v->floor_pct, v->near_limit_offset_c,
 			    v->min_freq_pct, v->hikari_aware);
+#endif /* CONFIG_IYASHI_DEBUG_MSG */
 }
 
 /* --------------------------------------------------------------- *
@@ -1014,8 +1016,10 @@ static int __init iyashi_safety_self_test(void)
 		}
 	}
 
+#ifdef CONFIG_IYASHI_DEBUG_MSG
 	pr_info("iyashi: safety self-test passed (%u cases)\n",
 		(unsigned int)ARRAY_SIZE(cases));
+#endif /* CONFIG_IYASHI_DEBUG_MSG */
 	return 0;
 }
 
@@ -1059,6 +1063,7 @@ static int __init iyashi_init(void)
 		pr_warn("Iyashi: cpufreq_register_notifier failed: %d (enforce_min will not survive hotplug)\n",
 			ret);
 
+#ifdef CONFIG_IYASHI_DEBUG_MSG
 	pr_info("Iyashi (癒し) performance floor active: floor=%u%% near_limit=%uC filter='%s'\n",
 		READ_ONCE(iyashi_floor_pct),
 		READ_ONCE(iyashi_near_limit_offset_c),
@@ -1161,6 +1166,7 @@ static int __init iyashi_init(void)
 	pr_info("Iyashi :          leave room.  let the foreground land.\n");
 	pr_info("Iyashi : \n");
 	pr_info("Iyashi : built by XTENSEI.\n");
+#endif /* CONFIG_IYASHI_DEBUG_MSG */
 
 	return 0;
 }

@@ -985,9 +985,11 @@ void hikari_apply_profile(unsigned int profile)
 		trace_hikari_profile(profile, v->force_floor_pct_big,
 				     v->force_floor_pct_little);
 
+#ifdef CONFIG_HIKARI_DEBUG_MSG
 	pr_info_ratelimited("hikari: profile %u applied (force_floor big=%u%% little=%u%%)\n",
 			    profile, v->force_floor_pct_big,
 			    v->force_floor_pct_little);
+#endif /* CONFIG_HIKARI_DEBUG_MSG */
 }
 
 /*
@@ -1833,6 +1835,7 @@ static int __init hikari_init(void)
 		READ_ONCE(hikari_enable_value),
 		static_key_enabled(&hikari_active_key.key) ? "on" : "off");
 
+#ifdef CONFIG_HIKARI_DEBUG_MSG
 	/*
 	 * Hikari boot banner.  Full mythic + mechanism narrative
 	 * emitted once at init.  Single 'Hikari : ' prefix on every
@@ -1924,6 +1927,7 @@ static int __init hikari_init(void)
 	pr_info("Hikari : light over the ridge.\n");
 	pr_info("Hikari : \n");
 	pr_info("Hikari : built by XTENSEI.\n");
+#endif /* CONFIG_HIKARI_DEBUG_MSG */
 
 	return 0;
 }

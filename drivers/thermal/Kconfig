@@ -207,6 +207,17 @@ config IYASHI
 
 	  If unsure, say Y.
 
+config IYASHI_DEBUG_MSG
+	bool "Iyashi verbose boot diagnostics"
+	depends on IYASHI
+	default y
+	help
+	  When enabled, Iyashi prints self-test results and other
+	  verbose boot-time diagnostics via pr_info.  Disable to strip
+	  those strings from the kernel image.
+
+	  If unsure, say Y.
+
 config KASUMI
 	bool "Kasumi thermal dampening"
 	default y
@@ -218,6 +229,17 @@ config KASUMI
 
 	  When disabled, temperature readings pass through unchanged
 	  and /sys/kernel/kasumi/ is not created.
+
+	  If unsure, say Y.
+
+config KASUMI_DEBUG_MSG
+	bool "Kasumi verbose boot diagnostics"
+	depends on KASUMI
+	default y
+	help
+	  When enabled, Kasumi prints self-test results and other
+	  verbose boot-time diagnostics via pr_info.  Disable to strip
+	  those strings from the kernel image.
 
 	  If unsure, say Y.
 

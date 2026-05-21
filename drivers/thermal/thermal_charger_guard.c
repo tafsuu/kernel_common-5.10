@@ -56,35 +56,51 @@
 
 #define THERMAL_CHARGER_GUARD_DEBOUNCE_MS 250
 
-static bool charger_online __read_mostly;
+/*
+ * Suppression tier, by charger type:
+ *   0 = offline (no suppression)
+ *   1 = standard charger (suppress Kasumi only -- fixes Transsion
+ *       battery-manager band check on USB/DCP/MAINS)
+ *   2 = fast / wireless charger (suppress both Kasumi and Iyashi)
+ */
+static unsigned int charger_tier __read_mostly;
 static DEFINE_SPINLOCK(charger_state_lock);
 
 static struct delayed_work charger_refresh_work;
 
-static bool psy_is_charger(struct power_supply *psy)
+/*
+ * Map a power_supply type to its suppression tier.
+ * Non-charger types return 0 (ignored).
+ */
+static unsigned int psy_charger_tier(struct power_supply *psy)
 {
 	if (!psy || !psy->desc)
-		return false;
+		return 0;
 
 	switch (psy->desc->type) {
+	/* Tier 2: fast charging / wireless */
+	case POWER_SUPPLY_TYPE_USB_PD:
+	case POWER_SUPPLY_TYPE_USB_PD_DRP:
+	case POWER_SUPPLY_TYPE_WIRELESS:
+		return 2;
+
+	/* Tier 1: standard chargers (MAINS, USB, legacy) */
 	case POWER_SUPPLY_TYPE_MAINS:
 	case POWER_SUPPLY_TYPE_USB:
 	case POWER_SUPPLY_TYPE_USB_DCP:
 	case POWER_SUPPLY_TYPE_USB_CDP:
 	case POWER_SUPPLY_TYPE_USB_ACA:
 	case POWER_SUPPLY_TYPE_USB_TYPE_C:
-	case POWER_SUPPLY_TYPE_USB_PD:
-	case POWER_SUPPLY_TYPE_USB_PD_DRP:
 	case POWER_SUPPLY_TYPE_APPLE_BRICK_ID:
-	case POWER_SUPPLY_TYPE_WIRELESS:
-		return true;
+		return 1;
+
 	default:
-		return false;
+		return 0;
 	}
 }
 
 struct charger_walk {
-	bool any_online;
+	unsigned int max_tier;
 };
 
 static int charger_psy_check(struct device *dev, void *data)
@@ -92,42 +108,51 @@ static int charger_psy_check(struct device *dev, void *data)
 	struct charger_walk *w = data;
 	struct power_supply *psy = dev_get_drvdata(dev);
 	union power_supply_propval val;
+	unsigned int tier;
 
-	if (!psy_is_charger(psy))
+	tier = psy_charger_tier(psy);
+	if (!tier)
 		return 0;
 
 	if (power_supply_get_property(psy, POWER_SUPPLY_PROP_ONLINE, &val))
 		return 0;
 
-	if (val.intval)
-		w->any_online = true;
+	if (val.intval && tier > w->max_tier)
+		w->max_tier = tier;
 
 	return 0;
 }
 
 static void charger_refresh(struct work_struct *work)
 {
-	struct charger_walk w = { .any_online = false };
-	bool prev;
+	struct charger_walk w = { .max_tier = 0 };
+	unsigned int prev;
 
 	if (class_for_each_device(power_supply_class, NULL, &w,
 				  charger_psy_check))
 		return;
 
 	spin_lock(&charger_state_lock);
-	prev = charger_online;
-	charger_online = w.any_online;
+	prev = charger_tier;
+	charger_tier = w.max_tier;
 	spin_unlock(&charger_state_lock);
 
-	if (prev == w.any_online)
+	if (prev == w.max_tier)
 		return;
 
-	kasumi_set_charger_suppressed(w.any_online);
-	iyashi_set_charger_suppressed(w.any_online);
+	/*
+	 * Tier 1: suppress Kasumi only (fixes Transsion battery-manager
+	 *          band check on USB/DCP/MAINS).
+	 * Tier 2: suppress both Kasumi and Iyashi.
+	 * Tier 0: restore both.
+	 */
+	kasumi_set_charger_suppressed(w.max_tier >= 1);
+	iyashi_set_charger_suppressed(w.max_tier >= 2);
 
-	pr_info("charger %s -> kasumi/iyashi %s\n",
-		w.any_online ? "online"     : "offline",
-		w.any_online ? "suppressed" : "restored");
+	pr_info("charger tier %u -> kasumi %s, iyashi %s\n",
+		w.max_tier,
+		w.max_tier >= 1 ? "suppressed" : "restored",
+		w.max_tier >= 2 ? "suppressed" : "restored");
 }
 
 static int charger_psy_notify(struct notifier_block *nb, unsigned long event,
@@ -182,3 +207,38 @@ static int __init thermal_charger_guard_init(void)
 	return 0;
 }
 late_initcall(thermal_charger_guard_init);
+
+/* ---- sysfs interface (/sys/kernel/thermal_charger_guard/) ---- */
+
+static ssize_t tier_show(struct kobject *kobj,
+			 struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", READ_ONCE(charger_tier));
+}
+
+static struct kobj_attribute thermal_charger_guard_tier_attr =
+	__ATTR(tier, 0444, tier_show, NULL);
+
+static struct attribute *thermal_charger_guard_attrs[] = {
+	&thermal_charger_guard_tier_attr.attr,
+	NULL,
+};
+
+static struct attribute_group thermal_charger_guard_attr_group = {
+	.attrs = thermal_charger_guard_attrs,
+};
+
+static struct kobject *thermal_charger_guard_kobj;
+
+static int __init thermal_charger_guard_sysfs_init(void)
+{
+	thermal_charger_guard_kobj = kobject_create_and_add(
+		"thermal_charger_guard", kernel_kobj);
+	if (!thermal_charger_guard_kobj)
+		return -ENOMEM;
+
+	return sysfs_create_group(thermal_charger_guard_kobj,
+				  &thermal_charger_guard_attr_group);
+}
+/* later_initcall_sync to guarantee kasumi/iyashi sysfs init ran first */
+late_initcall_sync(thermal_charger_guard_sysfs_init);
