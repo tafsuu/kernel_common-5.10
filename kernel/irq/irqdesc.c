@@ -413,6 +413,7 @@ static struct irq_desc *alloc_desc(int irq, int node, unsigned int flags,
 	desc_set_defaults(irq, desc, node, affinity, owner);
 	irqd_set(&desc->irq_data, flags);
 	kobject_init(&desc->kobj, &irq_kobj_type);
+	sbalance_desc_add(desc);
 
 	return desc;
 
@@ -457,6 +458,7 @@ static void free_desc(unsigned int irq)
 	 */
 	irq_sysfs_del(desc);
 	delete_irq_desc(irq);
+	sbalance_desc_del(desc);
 
 	/*
 	 * We free the descriptor, masks and stat fields via RCU. That

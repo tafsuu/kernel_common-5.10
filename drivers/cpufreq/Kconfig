@@ -266,6 +266,17 @@ config CPU_FREQ_GOV_ZENITH
 
 	  If in doubt, say N. (But you aren't in doubt, are you?)
 
+config ZENITH_DEBUG_MSG
+	bool "Zenith verbose boot diagnostics"
+	depends on CPU_FREQ_GOV_ZENITH
+	default y
+	help
+	  When enabled, Zenith prints its ASCII-art boot banner and other
+	  verbose boot-time diagnostics via pr_info.  Disable to strip
+	  those strings from the kernel image.
+
+	  If unsure, say Y.
+
 config CPUFREQ_DT
 	tristate "Generic DT based cpufreq driver"
 	depends on HAVE_CLK && OF

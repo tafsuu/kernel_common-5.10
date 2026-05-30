@@ -1808,6 +1808,7 @@ static int __init hikari_init(void)
 	}
 
 	hikari_discover_clusters();
+	hikari_recompute_force_floors();
 
 	if (!register_sysctl("kernel", hikari_sysctl_table)) {
 		pr_err("failed to register sysctl entries\n");

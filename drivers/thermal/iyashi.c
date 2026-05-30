@@ -98,6 +98,7 @@ static unsigned int iyashi_charger_suppressed __read_mostly;
  * for cpufreq cooling but is the knob users actually think in.
  */
 static unsigned int iyashi_min_freq_pct       __read_mostly;
+static unsigned int iyashi_enforce_min        __read_mostly;
 
 /*
  * Hikari cross-link tunables.  When hikari_aware is non-zero AND
@@ -117,6 +118,9 @@ static unsigned int iyashi_hikari_boost_pct   __read_mostly = 5;
  * fast path is a single unlikely-branch.
  */
 static DEFINE_STATIC_KEY_FALSE(iyashi_active_key);
+
+static void iyashi_qos_attach_all(void);
+static void iyashi_qos_update_all(void);
 
 /*
  * Recompute the static-branch state from the AND of (iyashi_enabled,
@@ -452,6 +456,12 @@ void iyashi_apply_profile(unsigned int profile)
 	WRITE_ONCE(iyashi_min_freq_pct, v->min_freq_pct);
 	WRITE_ONCE(iyashi_hikari_aware, v->hikari_aware);
 
+	if (READ_ONCE(iyashi_enforce_min)) {
+		if (v->min_freq_pct)
+			iyashi_qos_attach_all();
+		iyashi_qos_update_all();
+	}
+
 	if (trace_iyashi_profile_enabled())
 		trace_iyashi_profile(profile, v->floor_pct,
 				     v->near_limit_offset_c,
@@ -485,8 +495,6 @@ void iyashi_apply_profile(unsigned int profile)
  * the enforce_min state transitions.  The freq_qos API takes its  *
  * own internal locks; iyashi_qos_lock is the order on top.        *
  * --------------------------------------------------------------- */
-
-static unsigned int iyashi_enforce_min        __read_mostly;
 
 struct iyashi_qos_entry {
 	struct cpufreq_policy	*policy;

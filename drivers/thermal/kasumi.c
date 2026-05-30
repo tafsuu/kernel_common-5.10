@@ -180,20 +180,22 @@ static char kasumi_zone_offsets_buf[KASUMI_ZONE_OFFSETS_LEN];
 
 /*
  * Look up a per-zone offset override for zone_type, in millideg C.
- * Returns 0 if the zone has no override (caller falls back to the
- * global offset).  Caller passes a stack-local snapshot of
+ * Returns true when a zone-specific value was found; the override may
+ * intentionally be 0 so the normal offset path does not fall back to
+ * the global offset.  Caller passes a stack-local snapshot of
  * kasumi_zone_offsets_buf so the parser does not block writers.
  */
-static unsigned int kasumi_zone_offset_lookup(const char *snapshot,
-					      const char *zone_type)
+static bool kasumi_zone_offset_lookup(const char *snapshot,
+				      const char *zone_type,
+				      unsigned int *offset)
 {
 	char tok[KASUMI_ZONE_OFFSETS_LEN];
 	char *cur, *sep;
 	unsigned int val;
 	size_t zlen;
 
-	if (!zone_type || !snapshot || snapshot[0] == '\0')
-		return 0;
+	if (!zone_type || !snapshot || snapshot[0] == '\0' || !offset)
+		return false;
 
 	zlen = strlen(zone_type);
 
@@ -219,9 +221,10 @@ static unsigned int kasumi_zone_offset_lookup(const char *snapshot,
 			continue;
 		if (kstrtouint(eq + 1, 0, &val))
 			continue;
-		return val;
+		*offset = val;
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 bool kasumi_zone_allowed(const char *zone_type)
@@ -294,8 +297,8 @@ int kasumi_dampen(int real, const char *zone_type)
 		strscpy(snapshot, kasumi_zone_offsets_buf, sizeof(snapshot));
 		spin_unlock_irqrestore(&kasumi_filter_lock, flags);
 
-		per_zone = kasumi_zone_offset_lookup(snapshot, zone_type);
-		if (per_zone)
+		if (kasumi_zone_offset_lookup(snapshot, zone_type,
+					      &per_zone))
 			offset = per_zone;
 	}
 
@@ -632,12 +635,8 @@ static struct kobj_attribute kasumi_zone_filter_attr =
 
 /*
  * zone_offsets -- comma-separated "zone_type=offset_mc" pairs.
- * Validation on write is intentionally light: we accept any string
- * shorter than the buffer and let the lookup parser tolerate garbage
- * entries silently.  This matches zone_filter's "permissive write,
- * skip what we can't parse on read" contract and means tunables.cfg
- * lines that include comments after a '#' or trailing whitespace
- * will still get the intended overrides applied.
+ * A matched zone may use offset 0 so the normal offset path does not
+ * fall back to the global offset.
  */
 static ssize_t zone_offsets_show(struct kobject *kobj,
 				 struct kobj_attribute *attr, char *buf)
@@ -720,7 +719,7 @@ static ssize_t zone_offsets_store(struct kobject *kobj,
 		return ret;
 
 	spin_lock_irqsave(&kasumi_filter_lock, flags);
-	memcpy(kasumi_zone_offsets_buf, tmp, sizeof(tmp));
+	strscpy(kasumi_zone_offsets_buf, tmp, sizeof(kasumi_zone_offsets_buf));
 	spin_unlock_irqrestore(&kasumi_filter_lock, flags);
 	return count;
 }

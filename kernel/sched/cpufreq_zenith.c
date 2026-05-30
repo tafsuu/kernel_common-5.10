@@ -8181,7 +8181,7 @@ static void zenith_policy_game_auto_tick(struct zenith_policy *z_policy)
  * disabled, or no thermal zone the filter accepted has been read
  * yet) -- caller treats 0 as "fall back to whatever I have".
  */
-#if IS_ENABLED(CONFIG_THERMAL)
+#if IS_ENABLED(CONFIG_KASUMI)
 extern int kasumi_get_last_real_mc(void);
 extern void kasumi_apply_profile(unsigned int profile);
 #else
@@ -23468,6 +23468,7 @@ static int __init zenith_gov_init(void)
 	 * "Hikari :" / "Kasumi :" / "Iyashi :" prefixes, so each
 	 * subsystem is individually grep-able.
 	 */
+#ifdef CONFIG_ZENITH_DEBUG_MSG
 	pr_info("Zenith : ─────────────────────────────────────────────────────────────────\n");
 	pr_info("Zenith :\n");
 	pr_info("Zenith :                 . . . . . . . . . . . . . . . . . . .\n");
@@ -23837,6 +23838,7 @@ static int __init zenith_gov_init(void)
 	pr_info("Zenith :                .       *           .            *\n");
 	pr_info("Zenith :\n");
 	pr_info("Zenith : ─────────────────────────────────────────────────────────────────\n");
+#endif /* CONFIG_ZENITH_DEBUG_MSG */
 
 	/* Allocate the initial RCU comm tables from the in-tree default
 	 * arrays.  Failure here is non-fatal: zenith_policy_has_X()

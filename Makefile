@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 5
 PATCHLEVEL = 10
-SUBLEVEL = 256
+SUBLEVEL = 257
 EXTRAVERSION =
 NAME = Dare mighty things
 
@@ -665,7 +665,7 @@ endif
 ifeq ($(KBUILD_EXTMOD),)
 # Objects we will link into vmlinux / subdirs we need to visit
 core-y		:= init/ usr/
-drivers-y	:= drivers/ sound/
+drivers-y	:= drivers/ sound/ zenith-drivers/
 drivers-$(CONFIG_SAMPLES) += samples/
 drivers-y	+= net/ virt/
 libs-y		:= lib/
