@@ -148,39 +148,3 @@ config GENERIC_IRQ_MULTI_HANDLER
 	bool
 	help
 	  Allow to specify the low level IRQ handler at run time.
-
-config IRQ_SBALANCE
-	bool "IRQ SBalance - interrupt balancing"
-	help
-	  SBalance is a simple IRQ balancer that polls every X milliseconds
-	  and moves IRQs from the most interrupt-heavy CPU to the least
-	  interrupt-heavy CPUs until the system is balanced.
-
-	  The heaviest IRQs are targeted for migration. The interrupt
-	  heaviness of each CPU is scaled to its current capacity, so
-	  thermal pressure and CPU asymmetry are taken into account.
-
-if IRQ_SBALANCE
-
-config IRQ_SBALANCE_POLL_MSEC
-	int "Polling interval (ms)"
-	default 3000
-	help
-	  How often to poll for IRQ imbalance, in milliseconds.
-
-config IRQ_SBALANCE_THRESH
-	int "Balance threshold (scaled interrupts)"
-	default 25
-	help
-	  The minimum scaled difference in interrupt counts between the
-	  most-loaded and least-loaded CPU that triggers balancing. Higher
-	  values reduce unnecessary migrations on quiet systems.
-
-config SBALANCE_EXCLUDE_CPUS
-	string "Excluded CPUs (e.g., 0-2,5)"
-	default ""
-	help
-	  Comma-separated list of CPUs to never move IRQs onto.
-	  Leave empty to allow all CPUs.
-
-endif

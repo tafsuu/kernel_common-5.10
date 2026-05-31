@@ -511,12 +511,3 @@ static inline void irq_debugfs_copy_devname(int irq, struct device *dev)
 {
 }
 #endif /* CONFIG_GENERIC_IRQ_DEBUGFS */
-
-#ifdef CONFIG_IRQ_SBALANCE
-extern bool __irq_can_set_affinity(struct irq_desc *desc);
-extern void sbalance_desc_add(struct irq_desc *desc);
-extern void sbalance_desc_del(struct irq_desc *desc);
-#else
-static inline void sbalance_desc_add(struct irq_desc *desc) { }
-static inline void sbalance_desc_del(struct irq_desc *desc) { }
-#endif
