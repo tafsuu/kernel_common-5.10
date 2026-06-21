@@ -81,6 +81,7 @@ static void sysmon_send_event(struct qcom_sysmon *sysmon,
 			      const struct sysmon_event *event)
 {
 	char req[50];
+	char subsys_name[32];
 	int len;
 	int ret;
 
@@ -89,7 +90,15 @@ static void sysmon_send_event(struct qcom_sysmon *sysmon,
 	if (len >= sizeof(req))
 		return;
 
-	mutex_lock(&sysmon->lock);
+	strscpy(subsys_name, event->subsys_name, sizeof(subsys_name));
+
+	/* Use trylock to avoid blocking during crash recovery */
+	if (!mutex_trylock(&sysmon->lock)) {
+		dev_warn(sysmon->dev, "skipping sysmon event for %s: lock held\n",
+			 subsys_name);
+		return;
+	}
+
 	reinit_completion(&sysmon->comp);
 	sysmon->ssr_ack = false;
 
@@ -100,7 +109,7 @@ static void sysmon_send_event(struct qcom_sysmon *sysmon,
 	}
 
 	ret = wait_for_completion_timeout(&sysmon->comp,
-					  msecs_to_jiffies(5000));
+					  msecs_to_jiffies(1000));
 	if (!ret) {
 		dev_err(sysmon->dev, "timeout waiting for sysmon ack\n");
 		goto out_unlock;
@@ -487,7 +496,12 @@ static int sysmon_start(struct rproc_subdev *subdev)
 	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)&event);
 	mutex_unlock(&sysmon->state_lock);
 
-	mutex_lock(&sysmon_lock);
+	/* Don't hold sysmon_lock globally during crash recovery */
+	if (!mutex_trylock(&sysmon_lock)) {
+		dev_warn(sysmon->dev, "skipping sysmon start notifications\n");
+		return 0;
+	}
+
 	list_for_each_entry(target, &sysmon_list, node) {
 		if (target == sysmon)
 			continue;
@@ -517,7 +531,9 @@ static void sysmon_stop(struct rproc_subdev *subdev, bool crashed)
 
 	mutex_lock(&sysmon->state_lock);
 	sysmon->state = SSCTL_SSR_EVENT_BEFORE_SHUTDOWN;
-	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)&event);
+	/* Skip blocking notifier during crash to avoid 5s stalls */
+	if (!crashed)
+		blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)&event);
 	mutex_unlock(&sysmon->state_lock);
 
 	/* Don't request graceful shutdown if we've crashed */

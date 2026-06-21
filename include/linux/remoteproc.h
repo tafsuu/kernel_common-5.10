@@ -416,15 +416,15 @@ struct rproc_ops {
  * so please keep the two synchronized. @RPROC_LAST is used to check
  * the validity of an index before the lookup table is accessed, so
  * please update it as needed too.
- */
-enum rproc_state {
+ */	enum rproc_state {
 	RPROC_OFFLINE	= 0,
 	RPROC_SUSPENDED	= 1,
 	RPROC_RUNNING	= 2,
 	RPROC_CRASHED	= 3,
-	RPROC_DELETED	= 4,
-	RPROC_DETACHED	= 5,
-	RPROC_LAST	= 6,
+	RPROC_RECOVERING = 4,
+	RPROC_DELETED	= 5,
+	RPROC_DETACHED	= 6,
+	RPROC_LAST	= 7,
 };
 
 /**

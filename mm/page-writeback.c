@@ -75,6 +75,7 @@ static long ratelimit_pages = 32;
  * Start background writeback (via writeback threads) at this percentage
  */
 int dirty_background_ratio = 10;
+EXPORT_SYMBOL_GPL(dirty_background_ratio);
 
 /*
  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
@@ -92,6 +93,7 @@ int vm_highmem_is_dirtyable;
  * The generator of dirty data starts writeback at this percentage
  */
 int vm_dirty_ratio = 20;
+EXPORT_SYMBOL_GPL(vm_dirty_ratio);
 
 /*
  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
@@ -125,6 +127,7 @@ EXPORT_SYMBOL_GPL(dirty_writeback_interval);
  * wakeup can collect them, defeating the point of the longer interval.
  */
 unsigned int dirty_expire_interval = 30 * 100; /* centiseconds */
+EXPORT_SYMBOL_GPL(dirty_expire_interval);
 
 /*
  * Flag that makes the machine dump writes/reads and block dirtyings.

@@ -339,6 +339,7 @@ compound_page_dtor * const compound_page_dtors[NR_COMPOUND_DTORS] = {
  * tuned according to the amount of memory in the system.
  */
 int min_free_kbytes = 1024;
+EXPORT_SYMBOL_GPL(min_free_kbytes);
 int user_min_free_kbytes = -1;
 #ifdef CONFIG_DISCONTIGMEM
 /*

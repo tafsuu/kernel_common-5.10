@@ -74,6 +74,19 @@ config DEVFREQ_GOV_PASSIVE
 	  through sysfs entries. The passive governor recommends that
 	  devfreq device uses the OPP table to get the frequency/voltage.
 
+config DEVFREQ_ZENITH_GPU_SWITCH
+	bool "Zenith GPU governor auto-switcher"
+	depends on PM_DEVFREQ
+	default y
+	help
+	  Automatically switches the GPU devfreq governor based on the
+	  zenith game mode state:
+	    - game active  → performance
+	    - game stopped → simple_ondemand (with configurable idle timeout
+	      before falling to powersave)
+
+	  Tunables: /sys/module/zenith_gpu_switch/parameters/
+
 comment "DEVFREQ Drivers"
 
 config ARM_EXYNOS_BUS_DEVFREQ

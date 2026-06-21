@@ -370,8 +370,8 @@
  * a vendor renames it, set top_app_aware=0 and use the comm-walk
  * floors instead.
  */
-#define ZENITH_DEFAULT_TOP_APP_AWARE			0
-#define ZENITH_DEFAULT_TOP_APP_FLOOR_PCT		0
+#define ZENITH_DEFAULT_TOP_APP_AWARE			1
+#define ZENITH_DEFAULT_TOP_APP_FLOOR_PCT		50
 #define ZENITH_TOP_APP_FLOOR_PCT_MAX			100
 #define ZENITH_TOP_APP_CACHE_TTL_NS			(4 * NSEC_PER_MSEC)
 #define ZENITH_TOP_APP_CGROUP_NAME			"top-app"
@@ -4932,6 +4932,25 @@ static inline unsigned int zenith_eff_game_mode(unsigned int base_gm)
 		return 1;
 	return base_gm;
 }
+/**
+ * zenith_is_game_mode_active - query whether Zenith auto-detected a game
+ *
+ * Returns true when the in-kernel game-engine thread detector has
+ * identified a game workload and the auto-detection latch is still
+ * valid.  Intended for external drivers (GPU, thermal, etc.) that
+ * want to synchronise their own policy with Zenith's game mode.
+ *
+ * Safe to call from any context.  Returns false when the governor
+ * is not built, when game_auto is disabled, or when the latch has
+ * expired -- same fail-safe shape as every other exported hook.
+ */
+bool zenith_is_game_mode_active(void)
+{
+	if (!static_branch_likely(&zenith_game_auto_key))
+		return false;
+	return zenith_game_auto_active();
+}
+EXPORT_SYMBOL_GPL(zenith_is_game_mode_active);
 
 /**
  * zenith_set_drm_vblank_us - publish active panel vblank period to zenith
@@ -5124,6 +5143,88 @@ void zenith_drm_vblank_event(void)
 	atomic_inc(&zenith_frame_overrun_streak);
 }
 EXPORT_SYMBOL_GPL(zenith_drm_vblank_event);
+/**
+ * zenith_gpu_load_event - notify zenith of GPU load change
+ * @gpu_load_pct: GPU utilization percentage (0-100)
+ *
+ * Called by the GPU driver (e.g. MSM DRM devfreq get_dev_status)
+ * on every devfreq polling tick (~10ms).  When GPU load crosses
+ * ZENITH_GPU_LOAD_THRESH_PCT, stamp a short input boost so the
+ * CPU clusters are pre-emptively raised before PELT catches up
+ * with the workload that generated the GPU load.
+ *
+ * Lock-free; safe to call from any context including atomic.
+ * Stale/zero thresholds gate the stamping, so a driver that
+ * stops calling this simply returns the governor to the legacy
+ * PELT-only path -- same fail-safe shape as
+ * zenith_set_drm_vblank_us() / zenith_drm_vblank_event().
+ *
+ * Rather than introducing a new file-scope deadline and a new
+ * floor tier in zenith_get_next_freq(), we reuse the existing
+ * zenith_input_boost_until_ns mechanism so that GPU-intensive
+ * workloads benefit from the same cluster-boost path as touch
+ * input.  The 10 ms devfreq polling cadence re-arms the
+ * deadline on every tick while the GPU stays busy, so the CPU
+ * remains boosted for the duration of the GPU workload.
+ */
+#define ZENITH_GPU_LOAD_THRESH_PCT	50
+#define ZENITH_GPU_LOAD_WINDOW_MS	50
+
+void zenith_gpu_load_event(unsigned int gpu_load_pct)
+{
+
+	u64 now_ns, deadline, boost_until;
+	/* Only fire when GPU is meaningfully loaded */
+	if (gpu_load_pct < ZENITH_GPU_LOAD_THRESH_PCT)
+
+		return;
+	now_ns = ktime_get_ns();
+
+	deadline = now_ns + (u64)ZENITH_GPU_LOAD_WINDOW_MS * NSEC_PER_MSEC;
+	boost_until = (u64)atomic64_read(&zenith_input_boost_until_ns);
+	/* Only extend the deadline, never shorten it */
+
+	if (deadline > boost_until)
+		atomic64_set(&zenith_input_boost_until_ns, (s64)deadline);
+}
+EXPORT_SYMBOL_GPL(zenith_gpu_load_event);
+
+
+/**
+ * zenith_gpu_freq_event - notify zenith of high GPU frequency
+ * @freq_pct: GPU frequency as percentage of max (0-100)
+ *
+ * Companion to zenith_gpu_load_event().  While load-based boost
+ * reacts to current GPU utilization, freq-based boost anticipates
+ * future CPU demand: a GPU that has ramped to a high OPP is a
+ * leading indicator that a render workload is about to hit the CPU
+ * (frame submission, buffer sync).
+ *
+ * Uses a longer window (80ms vs 50ms) because the predictive
+ * signal needs to bridge the gap between GPU ramp-up and CPU
+ * workload arrival, which can span multiple devfreq ticks.
+ *
+ * Lock-free; safe to call from any context including atomic.
+ * Same fail-safe shape as zenith_gpu_load_event().
+ */
+#define ZENITH_GPU_FREQ_THRESH_PCT	70
+#define ZENITH_GPU_FREQ_WINDOW_MS	80
+
+void zenith_gpu_freq_event(unsigned int freq_pct)
+{
+
+	u64 now_ns, deadline, boost_until;
+	/* Only fire when GPU is at a high OPP */
+	if (freq_pct < ZENITH_GPU_FREQ_THRESH_PCT)
+		return;
+	now_ns = ktime_get_ns();
+	deadline = now_ns + (u64)ZENITH_GPU_FREQ_WINDOW_MS * NSEC_PER_MSEC;
+	boost_until = (u64)atomic64_read(&zenith_input_boost_until_ns);
+	/* Use a longer window than load-based boost */
+	if (deadline > boost_until)
+		atomic64_set(&zenith_input_boost_until_ns, (s64)deadline);
+}
+EXPORT_SYMBOL_GPL(zenith_gpu_freq_event);
 
 static unsigned int zenith_input_boost_active_ms = ZENITH_DEFAULT_INPUT_BOOST_MS;
 

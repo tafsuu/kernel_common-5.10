@@ -361,6 +361,7 @@ int q6routing_stream_open(int fedai_id, int perf_mode,
 	struct q6copp *copp;
 	int copp_idx;
 	struct session_data *session, *pdata;
+	int path_type, sample_rate, channels, bits_per_sample, port_id;
 
 	if (!routing_data) {
 		pr_err("Routing driver not yet ready\n");
@@ -378,19 +379,27 @@ int q6routing_stream_open(int fedai_id, int perf_mode,
 	session->channels = pdata->channels;
 	session->bits_per_sample = pdata->bits_per_sample;
 
+	/* Cache session params under lock */
+	path_type = session->path_type;
+	sample_rate = session->sample_rate;
+	channels = session->channels;
+	bits_per_sample = session->bits_per_sample;
+	port_id = session->port_id;
+	mutex_unlock(&routing_data->lock);
+
+	/* ADM calls outside routing lock to avoid 2+ sec stall */
 	payload.num_copps = 0; /* only RX needs to use payload */
 	topology = NULL_COPP_TOPOLOGY;
-	copp = q6adm_open(routing_data->dev, session->port_id,
-			      session->path_type, session->sample_rate,
-			      session->channels, topology, perf_mode,
-			      session->bits_per_sample, 0, 0);
+	copp = q6adm_open(routing_data->dev, port_id,
+			      path_type, sample_rate,
+			      channels, topology, perf_mode,
+			      bits_per_sample, 0, 0);
 
-	if (IS_ERR_OR_NULL(copp)) {
-		mutex_unlock(&routing_data->lock);
+	if (IS_ERR_OR_NULL(copp))
 		return -EINVAL;
-	}
 
 	copp_idx = q6adm_get_copp_id(copp);
+	mutex_lock(&routing_data->lock);
 	set_bit(copp_idx, &session->copp_map);
 	session->copps[copp_idx] = copp;
 
@@ -400,13 +409,14 @@ int q6routing_stream_open(int fedai_id, int perf_mode,
 		num_copps++;
 	}
 
+	mutex_unlock(&routing_data->lock);
+
 	if (num_copps) {
 		payload.num_copps = num_copps;
 		payload.session_id = stream_id;
-		q6adm_matrix_map(routing_data->dev, session->path_type,
+		q6adm_matrix_map(routing_data->dev, path_type,
 				 payload, perf_mode);
 	}
-	mutex_unlock(&routing_data->lock);
 
 	return 0;
 }

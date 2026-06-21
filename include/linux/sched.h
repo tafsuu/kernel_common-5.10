@@ -1441,7 +1441,6 @@ struct task_struct {
 	ANDROID_KABI_USE(4, struct {
 		unsigned	user_dumpable:1;
 		});
-
 	ANDROID_KABI_RESERVE(5);
 
 #ifdef CONFIG_SYSVIPC

@@ -26,8 +26,39 @@
 #include "sched.h"
 #include <linux/hikari.h>
 #include <linux/prefer_silver.h>
+#include <linux/xarray.h>
 
 #include <trace/hooks/sched.h>
+
+/*
+ * KMI-safe per-task max_allowed_capacity storage.
+ * Stored in an xarray keyed by task_struct pointer to avoid
+ * adding fields to the exported struct task_struct.
+ */
+static DEFINE_XARRAY(task_cap_xa);
+
+static unsigned long task_max_allowed_cap(struct task_struct *p)
+{
+	void *entry;
+
+	rcu_read_lock();
+	entry = xa_load(&task_cap_xa, (unsigned long)p);
+	rcu_read_unlock();
+
+	if (entry)
+		return xa_to_value(entry);
+	return SCHED_CAPACITY_SCALE;
+}
+
+static inline void task_set_max_allowed_cap(struct task_struct *p, unsigned long cap)
+{
+	xa_store(&task_cap_xa, (unsigned long)p, xa_mk_value(cap), GFP_ATOMIC);
+}
+
+static inline void task_clear_max_allowed_cap(struct task_struct *p)
+{
+	xa_erase(&task_cap_xa, (unsigned long)p);
+}
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_stat_runtime);
 
@@ -4382,17 +4413,20 @@ static inline int task_fits_cpu(struct task_struct *p, int cpu)
 static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
 {
 	bool need_update = true;
+	int cpu = cpu_of(rq);
 
 	trace_android_rvh_update_misfit_status(p, rq, &need_update);
 	if (!static_branch_unlikely(&sched_asym_cpucapacity) || !need_update)
 		return;
 
-	if (!p || p->nr_cpus_allowed == 1) {
-		rq->misfit_task_load = 0;
-		return;
-	}
+	/*
+	 * Affinity allows us to go somewhere higher?  Or are we on biggest
+	 * available CPU already? Or do we fit into this CPU ?
+	 */
+	if (!p || (p->nr_cpus_allowed == 1) ||
+	    (arch_scale_cpu_capacity(cpu) == task_max_allowed_cap(p)) ||
+	    task_fits_cpu(p, cpu)) {
 
-	if (task_fits_cpu(p, cpu_of(rq))) {
 		rq->misfit_task_load = 0;
 		return;
 	}
@@ -7403,6 +7437,37 @@ static void migrate_task_rq_fair(struct task_struct *p, int new_cpu)
 static void task_dead_fair(struct task_struct *p)
 {
 	remove_entity_load_avg(&p->se);
+	task_clear_max_allowed_cap(p);
+}
+
+/*
+ * Set the max capacity the task is allowed to run at for misfit detection.
+ */
+static void set_task_max_allowed_capacity(struct task_struct *p)
+{
+	struct asym_cap_data *entry;
+
+	if (!sched_asym_cpucap_active())
+		return;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(entry, &asym_cap_list, link) {
+		cpumask_t *cpumask;
+
+		cpumask = cpu_capacity_span(entry);
+		if (!cpumask_intersects(p->cpus_ptr, cpumask))
+			continue;
+
+		task_set_max_allowed_cap(p, entry->capacity);
+		break;
+	}
+	rcu_read_unlock();
+}
+
+static void set_cpus_allowed_fair(struct task_struct *p, const struct cpumask *new_mask)
+{
+	set_cpus_allowed_common(p, new_mask);
+	set_task_max_allowed_capacity(p);
 }
 
 static int
@@ -7413,6 +7478,8 @@ balance_fair(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 
 	return sched_balance_newidle(rq, rf) != 0;
 }
+#else
+static inline void set_task_max_allowed_capacity(struct task_struct *p) {}
 #endif /* CONFIG_SMP */
 
 static unsigned long wakeup_gran(struct sched_entity *se)
@@ -8841,16 +8908,10 @@ check_cpu_capacity(struct rq *rq, struct sched_domain *sd)
 				(rq->cpu_capacity_orig * 100));
 }
 
-/*
- * Check whether a rq has a misfit task and if it looks like we can actually
- * help that task: we can migrate the task to a CPU of higher capacity, or
- * the task's current CPU is heavily pressured.
- */
-static inline int check_misfit_status(struct rq *rq, struct sched_domain *sd)
+/* Check if the rq has a misfit task */
+static inline bool check_misfit_status(struct rq *rq)
 {
-	return rq->misfit_task_load &&
-		(rq->cpu_capacity_orig < rq->rd->max_cpu_capacity ||
-		 check_cpu_capacity(rq, sd));
+	return rq->misfit_task_load;
 }
 
 /*
@@ -10324,8 +10385,12 @@ more_balance:
 		 * We do not want newidle balance, which can be very
 		 * frequent, pollute the failure counter causing
 		 * excessive cache_hot migrations and active balances.
+		 *
+		 * Similarly for migration_misfit which is not related to
+		 * load/util migration, don't pollute nr_balance_failed.
 		 */
-		if (idle != CPU_NEWLY_IDLE)
+		if (idle != CPU_NEWLY_IDLE &&
+		    env.migration_type != migrate_misfit)
 			sd->nr_balance_failed++;
 
 		if (need_active_balance(&env)) {
@@ -10416,8 +10481,13 @@ out_one_pinned:
 	 * repeatedly reach this code, which would lead to balance_interval
 	 * skyrocketting in a short amount of time. Skip the balance_interval
 	 * increase logic to avoid that.
+	 *
+	 * Similarly misfit migration which is not necessarily an indication of
+	 * the system being busy and requires lb to backoff to let it settle
+	 * down.
 	 */
-	if (env.idle == CPU_NEWLY_IDLE)
+	if (env.idle == CPU_NEWLY_IDLE ||
+	    env.migration_type == migrate_misfit)
 		goto out;
 
 	/* tune up the balancing interval */
@@ -10814,7 +10884,7 @@ static void nohz_balancer_kick(struct rq *rq)
 		 * When ASYM_CPUCAPACITY; see if there's a higher capacity CPU
 		 * to run the misfit task on.
 		 */
-		if (check_misfit_status(rq, sd)) {
+		if (check_misfit_status(rq)) {
 			flags = NOHZ_STATS_KICK | NOHZ_BALANCE_KICK;
 			goto unlock;
 		}
@@ -11396,6 +11466,8 @@ static void task_fork_fair(struct task_struct *p)
 	rq_lock(rq, &rf);
 	update_rq_clock(rq);
 
+	set_task_max_allowed_capacity(p);
+
 	cfs_rq = task_cfs_rq(current);
 	curr = cfs_rq->curr;
 	if (curr) {
@@ -11570,6 +11642,8 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 static void switched_to_fair(struct rq *rq, struct task_struct *p)
 {
 	attach_task_cfs_rq(p);
+
+	set_task_max_allowed_capacity(p);
 
 	if (task_on_rq_queued(p)) {
 		/*
@@ -11884,7 +11958,7 @@ const struct sched_class fair_sched_class
 	.rq_offline		= rq_offline_fair,
 
 	.task_dead		= task_dead_fair,
-	.set_cpus_allowed	= set_cpus_allowed_common,
+	.set_cpus_allowed	= set_cpus_allowed_fair,
 #endif
 
 	.task_tick		= task_tick_fair,

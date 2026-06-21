@@ -58,6 +58,16 @@ config BFQ_CGROUP_DEBUG
 	files in a cgroup which can be useful for debugging.
 
 
+config MQ_IOSCHED_ZIOS
+	tristate "ZIOS I/O scheduler"
+	default y
+	help
+	  ZIOS (Zenith I/O Scheduler) is a game-aware, top-app-cgroup-aware
+	  multi-queue I/O scheduler for mobile devices.  It integrates with
+	  the Zenith CPU governor to detect game mode and prioritise reads,
+	  and uses cgroup awareness to bias dispatch toward foreground app
+	  I/O.  Designed for UFS/NVMe devices.
+
 config MQ_IOSCHED_SSG
 	tristate "SamSung Generic I/O scheduler"
 	default y

@@ -24,9 +24,15 @@
 #if IS_ENABLED(CONFIG_CPU_FREQ_GOV_ZENITH)
 extern void zenith_set_drm_vblank_us(unsigned int us);
 void zenith_drm_vblank_event(void);
+void zenith_gpu_load_event(unsigned int gpu_load_pct);
+void zenith_gpu_freq_event(unsigned int freq_pct);
+bool zenith_is_game_mode_active(void);
 #else
 static inline void zenith_set_drm_vblank_us(unsigned int us) { }
 static inline void zenith_drm_vblank_event(void) { }
+static inline void zenith_gpu_load_event(unsigned int gpu_load_pct) { }
+static inline void zenith_gpu_freq_event(unsigned int freq_pct) { }
+static inline bool zenith_is_game_mode_active(void) { return false; }
 #endif
 
 #endif /* _LINUX_CPUFREQ_ZENITH_H */

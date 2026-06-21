@@ -158,6 +158,10 @@ struct msm_gpu {
 		ktime_t time;
 	} devfreq;
 
+	/* Delayed work for automatic devfreq governor switching */
+	struct delayed_work devfreq_governor_work;
+	unsigned long devfreq_last_submit;
+
 	struct msm_gpu_state *crashstate;
 	/* True if the hardware supports expanded apriv (a650 and newer) */
 	bool hw_apriv;

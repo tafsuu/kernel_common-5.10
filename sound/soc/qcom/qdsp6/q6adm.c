@@ -26,7 +26,7 @@
 #define ADM_CMD_DEVICE_CLOSE_V5		0x00010327
 #define ADM_CMD_MATRIX_MAP_ROUTINGS_V5	0x00010325
 
-#define TIMEOUT_MS 1000
+#define TIMEOUT_MS 500
 #define RESET_COPP_ID 99
 #define INVALID_COPP_ID 0xFF
 /* Definition for a legacy device session. */

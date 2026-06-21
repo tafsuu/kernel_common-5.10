@@ -14,7 +14,8 @@
 #include "q6core.h"
 #include "q6dsp-errno.h"
 
-#define ADSP_STATE_READY_TIMEOUT_MS    3000
+#define ADSP_STATE_READY_TIMEOUT_MS    2000
+#define ADSP_STATE_POLL_INTERVAL_MS    100
 #define Q6_READY_TIMEOUT_MS 100
 #define AVCS_CMD_ADSP_EVENT_GET_STATE		0x0001290C
 #define AVCS_CMDRSP_ADSP_EVENT_GET_STATE	0x0001290D
@@ -318,6 +319,9 @@ bool q6core_is_adsp_ready(void)
 			ret = false;
 			break;
 		}
+
+		/* Yield CPU between polls to avoid starving other threads */
+		msleep(ADSP_STATE_POLL_INTERVAL_MS);
 	}
 
 	mutex_unlock(&g_core->lock);

@@ -160,7 +160,7 @@ int qcom_q6v5_request_stop(struct qcom_q6v5 *q6v5)
 	qcom_smem_state_update_bits(q6v5->state,
 				    BIT(q6v5->stop_bit), BIT(q6v5->stop_bit));
 
-	ret = wait_for_completion_timeout(&q6v5->stop_done, 5 * HZ);
+	ret = wait_for_completion_timeout(&q6v5->stop_done, HZ / 2);
 
 	qcom_smem_state_update_bits(q6v5->state, BIT(q6v5->stop_bit), 0);
 

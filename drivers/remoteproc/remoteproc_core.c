@@ -1710,9 +1710,11 @@ int rproc_trigger_recovery(struct rproc *rproc)
 
 	dev_err(dev, "recovering %s\n", rproc->name);
 
+	/* Mark as recovering so other paths can detect this */
+	rproc->state = RPROC_RECOVERING;
+	mutex_unlock(&rproc->lock);
+
 	ret = rproc_stop(rproc, true);
-	if (ret)
-		goto unlock_mutex;
 
 	/* generate coredump */
 	rproc->ops->coredump(rproc);
@@ -1721,13 +1723,17 @@ int rproc_trigger_recovery(struct rproc *rproc)
 	ret = request_firmware(&firmware_p, rproc->firmware, dev);
 	if (ret < 0) {
 		dev_err(dev, "request_firmware failed: %d\n", ret);
-		goto unlock_mutex;
+		goto relock;
 	}
 
 	/* boot the remote processor up again */
 	ret = rproc_start(rproc, firmware_p);
 
 	release_firmware(firmware_p);
+
+relock:
+	mutex_lock(&rproc->lock);
+	rproc->state = RPROC_RUNNING;
 
 unlock_mutex:
 	trace_android_vh_rproc_recovery(rproc);
@@ -1750,6 +1756,12 @@ static void rproc_crash_handler_work(struct work_struct *work)
 	dev_dbg(dev, "enter %s\n", __func__);
 
 	mutex_lock(&rproc->lock);
+
+	if (rproc->state == RPROC_RECOVERING) {
+		/* Recovery already in progress, skip */
+		mutex_unlock(&rproc->lock);
+		return;
+	}
 
 	if (rproc->state == RPROC_CRASHED) {
 		/* handle only the first crash detected */

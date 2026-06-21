@@ -51,6 +51,7 @@
 #include <linux/printk.h>
 #include <linux/dax.h>
 #include <linux/psi.h>
+#include <linux/cpufreq_zenith.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -692,6 +693,7 @@ unsigned long shrink_slab(gfp_t gfp_mask, int nid,
 	if (bypass)
 		return 0;
 
+	/*
 	/*
 	 * The root memcg might be allocated even though memcg is disabled
 	 * via "cgroup_disable=memory" boot parameter.  This could make
@@ -2346,6 +2348,15 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	unsigned long ap, fp;
 	enum lru_list lru;
 	bool balance_anon_file_reclaim = false;
+
+	/*
+	 * During game mode: cap effective swappiness at 20 to reduce
+	 * swap-out aggressiveness.  Background page reclaim won't
+	 * compete with the game for I/O bandwidth; anonymous pages
+	 * are only swapped under extreme memory pressure.
+	 */
+	if (zenith_is_game_mode_active() && swappiness > 20)
+		swappiness = 20;
 
 	/* If we have no swap space, do not bother scanning anon pages. */
 	if (!sc->may_swap || mem_cgroup_get_nr_swap_pages(memcg) <= 0) {

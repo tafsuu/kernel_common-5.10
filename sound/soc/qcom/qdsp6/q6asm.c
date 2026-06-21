@@ -305,11 +305,11 @@ static int q6asm_apr_send_session_pkt(struct q6asm *a, struct audio_client *ac,
 		rc = wait_event_timeout(a->mem_wait,
 					(ac->result.opcode == hdr->opcode) ||
 					(ac->result.opcode == rsp_opcode),
-					5 * HZ);
+					msecs_to_jiffies(1000));
 	else
 		rc = wait_event_timeout(a->mem_wait,
 					(ac->result.opcode == hdr->opcode),
-					5 * HZ);
+					msecs_to_jiffies(1000));
 
 	if (!rc) {
 		dev_err(a->dev, "CMD %x timeout\n", hdr->opcode);
@@ -891,7 +891,7 @@ static int q6asm_ac_send_cmd_sync(struct audio_client *ac, struct apr_pkt *pkt)
 		goto err;
 
 	rc = wait_event_timeout(ac->cmd_wait,
-				(ac->result.opcode == hdr->opcode), 5 * HZ);
+				(ac->result.opcode == hdr->opcode), msecs_to_jiffies(1000));
 	if (!rc) {
 		dev_err(ac->dev, "CMD %x timeout\n", hdr->opcode);
 		rc =  -ETIMEDOUT;

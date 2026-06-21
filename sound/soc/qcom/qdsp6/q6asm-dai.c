@@ -18,6 +18,7 @@
 #include <sound/pcm_params.h>
 #include "q6asm.h"
 #include "q6routing.h"
+#include "q6core.h"
 #include "q6dsp-errno.h"
 
 #define DRV_NAME	"q6asm-fe-dai"
@@ -895,6 +896,12 @@ static int q6asm_dai_compr_set_params(struct snd_soc_component *component,
 	struct q6asm_dai_data *pdata;
 	struct device *dev = component->dev;
 	int ret;
+
+	/* Fail fast if ADSP is not available (e.g. during crash recovery) */
+	if (!q6core_is_adsp_ready()) {
+		pr_err("ADSP not ready, skipping compress set_params\n");
+		return -ENODEV;
+	}
 
 	pdata = snd_soc_component_get_drvdata(component);
 	if (!pdata)
