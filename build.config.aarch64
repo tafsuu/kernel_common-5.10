@@ -18,3 +18,4 @@ vmlinux.symvers
 modules.builtin
 modules.builtin.modinfo
 "
+KCFLAGS="-O3 -march=armv8.2-a"
