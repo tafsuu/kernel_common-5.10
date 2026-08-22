@@ -10,21 +10,21 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev clang lld zip ccache
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev clang lld zip ccache gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Compile Kernel
         run: |
           mkdir -p out
-          make ARCH=arm64 O=out gki_defconfig
-          make -j$(nproc --all) ARCH=arm64 O=out CC=clang
+          make ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 gki_defconfig
+          make -j$(nproc --all) ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
 
       - name: Upload Kernel Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: GKI-Kernel-Image
           path: out/arch/arm64/boot/Image
