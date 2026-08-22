@@ -1,0 +1,30 @@
+name: Build Android 5.10 Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Kernel Image
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev clang lld zip ccache
+
+      - name: Compile Kernel
+        run: |
+          mkdir -p out
+          make ARCH=arm64 O=out gki_defconfig
+          make -j$(nproc --all) ARCH=arm64 O=out CC=clang
+
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: GKI-Kernel-Image
+          path: out/arch/arm64/boot/Image
