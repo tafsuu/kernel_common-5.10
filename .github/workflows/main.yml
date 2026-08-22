@@ -30,8 +30,9 @@ jobs:
       - name: Compile Kernel
         run: |
           mkdir -p out
-          make ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 WERROR=0 gki_defconfig
-          make -j$(nproc --all) ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 WERROR=0 KCFLAGS="-Wno-error"
+          make ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 LTO=none WERROR=0 gki_defconfig
+          scripts/config --file out/.config -d LTO_CLANG_FULL -d LTO_CLANG_THIN -e LTO_NONE
+          make -j$(nproc --all) ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 LTO=none WERROR=0 KCFLAGS="-Wno-error"
 
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
