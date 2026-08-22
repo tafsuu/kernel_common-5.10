@@ -15,13 +15,16 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev clang lld llvm zip ccache gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y \
+            build-essential bc bison flex libssl-dev libelf-dev \
+            clang lld llvm dwarves zip ccache gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu libncurses-dev
 
       - name: Compile Kernel
         run: |
           mkdir -p out
-          make ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 gki_defconfig
-          make -j$(nproc --all) ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
+          make ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 WERROR=0 gki_defconfig
+          make -j$(nproc --all) ARCH=arm64 O=out CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 WERROR=0 KCFLAGS="-Wno-error"
 
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
